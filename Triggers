@@ -1,0 +1,105 @@
+-- =============================================
+-- DATABASE SETUP
+-- =============================================
+DROP DATABASE IF EXISTS faculty_trigger_lab;
+CREATE DATABASE faculty_trigger_lab;
+USE faculty_trigger_lab;
+
+-- =============================================
+-- TABLES CREATION
+-- =============================================
+CREATE TABLE EMPLOYEE (
+    EmpID INT PRIMARY KEY,
+    EmpName VARCHAR(100) NOT NULL,
+    BasicSalary DECIMAL(10,2) NOT NULL,
+    StartDate DATE NOT NULL,
+    NoOfPub INT NOT NULL CHECK(NoOfPub >= 0),
+    IncrementRate DECIMAL(5,2) DEFAULT 0,
+    UpdatedSalary DECIMAL(10,2)
+);
+
+CREATE TABLE SALARY_LOG (
+    LogID INT AUTO_INCREMENT PRIMARY KEY,
+    EmpID INT,
+    OldSalary DECIMAL(10,2),
+    NewSalary DECIMAL(10,2),
+    ChangedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Note VARCHAR(100),
+    FOREIGN KEY (EmpID) REFERENCES EMPLOYEE(EmpID)
+);
+
+-- =============================================
+-- DATA INSERTION
+-- =============================================
+INSERT INTO EMPLOYEE (EmpID, EmpName, BasicSalary, StartDate, NoOfPub, IncrementRate, UpdatedSalary)
+VALUES 
+(1, 'Rahim', 30000, '2022-01-01', 5, 0, 30000),
+(2, 'Karim', 25000, '2023-01-01', 3, 0, 25000),
+(3, 'Jamal', 20000, '2024-06-01', 1, 0, 20000),
+(4, 'Hasan', 18000, '2025-01-01', 0, 0, 18000),
+(5, 'Sohan', 40000, '2020-05-01', 6, 0, 40000),
+(6, 'Rifat', 27000, '2022-03-01', 2, 0, 27000),
+(7, 'Tanvir', 22000, '2021-07-01', 1, 0, 22000),
+(8, 'Nayeem', 26000, '2025-02-01', 4, 0, 26000);
+
+-- =============================================
+-- TRIGGER: CALCULATE SALARY & INCREMENT
+-- =============================================
+DELIMITER //
+
+CREATE TRIGGER trg_before_employee_update
+BEFORE UPDATE ON EMPLOYEE
+FOR EACH ROW
+BEGIN
+    DECLARE service_years INT;
+    SET service_years = TIMESTAMPDIFF(YEAR, NEW.StartDate, CURDATE());
+
+    -- Logic remains the same, but structured using CASE for variety
+    IF service_years > 1 THEN
+        SET NEW.IncrementRate = CASE 
+            WHEN NEW.NoOfPub > 4 THEN 20
+            WHEN NEW.NoOfPub BETWEEN 2 AND 3 THEN 10
+            WHEN NEW.NoOfPub = 1 THEN 5
+            ELSE 0
+        END;
+    ELSE
+        SET NEW.IncrementRate = 0;
+    END IF;
+
+    -- Final Salary Calculation
+    SET NEW.UpdatedSalary = NEW.BasicSalary * (1 + (NEW.IncrementRate / 100));
+END //
+
+DELIMITER ;
+
+-- =============================================
+-- TRIGGER: MAINTAIN AUDIT LOG
+-- =============================================
+DELIMITER //
+
+CREATE TRIGGER trg_after_employee_update
+AFTER UPDATE ON EMPLOYEE
+FOR EACH ROW
+BEGIN
+    -- Log only if salary actually changes
+    IF OLD.UpdatedSalary != NEW.UpdatedSalary THEN
+        INSERT INTO SALARY_LOG (EmpID, OldSalary, NewSalary, Note)
+        VALUES (NEW.EmpID, OLD.UpdatedSalary, NEW.UpdatedSalary, 'Salary Adjustment Applied');
+    END IF;
+END //
+
+DELIMITER ;
+
+-- =============================================
+-- TESTING THE UPDATES
+-- =============================================
+UPDATE EMPLOYEE SET NoOfPub = 5 WHERE EmpID = 1; 
+UPDATE EMPLOYEE SET NoOfPub = 3 WHERE EmpID = 2; 
+UPDATE EMPLOYEE SET NoOfPub = 1 WHERE EmpID = 3; 
+UPDATE EMPLOYEE SET NoOfPub = 0 WHERE EmpID = 4; 
+
+-- =============================================
+-- VIEW RESULTS
+-- =============================================
+SELECT * FROM EMPLOYEE;
+SELECT * FROM SALARY_LOG;
